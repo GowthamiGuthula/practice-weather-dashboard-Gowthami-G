@@ -1,22 +1,14 @@
 package org.example;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Scanner;
 
+@SpringBootApplication
 public class Main {
-    private static final String API_URL = "https://api.openweathermap.org/data/2.5/weather";
     private static final List<String> CITY_OPTIONS = List.of(
             "New York",
             "London",
@@ -26,6 +18,9 @@ public class Main {
     );
 
     public static void main(String[] args) {
+        ApplicationContext context = SpringApplication.run(Main.class, args);
+        WeatherService weatherService = context.getBean(WeatherService.class);
+
         Scanner scanner = new Scanner(System.in);
         String apiKey = getApiKey(scanner);
 
@@ -37,9 +32,9 @@ public class Main {
             switch (choice) {
                 case "1", "2", "3", "4", "5" -> {
                     String city = CITY_OPTIONS.get(Integer.parseInt(choice) - 1);
-                    showWeatherForCity(city, apiKey);
+                    showWeatherForCity(city, apiKey, weatherService);
                 }
-                case "6" -> showWeatherForMultipleCities(scanner, apiKey);
+                case "6" -> showWeatherForMultipleCities(scanner, apiKey, weatherService);
                 case "0" -> {
                     System.out.println("Goodbye!");
                     return;
@@ -80,24 +75,23 @@ public class Main {
         return apiKey;
     }
 
-    private static void showWeatherForCity(String city, String apiKey) {
+    private static void showWeatherForCity(String city, String apiKey, WeatherService weatherService) {
         try {
-            WeatherSummary summary = fetchWeather(city, apiKey);
+            WeatherService.WeatherSummary summary = weatherService.fetchWeather(city, apiKey);
             System.out.println("====================================");
             System.out.printf("Current weather for %s%n", summary.city());
             System.out.printf("Temperature: %.1f°C%n", summary.temperatureCelsius());
             System.out.printf("Description: %s%n", capitalize(summary.description()));
             System.out.printf("Humidity: %d%%%n", summary.humidity());
             System.out.println("====================================");
-        } catch (IOException | InterruptedException e) {
+        } catch (RuntimeException e) {
             System.out.println("Could not fetch weather for " + city + ".");
             System.out.println("Error: " + e.getMessage());
-            Thread.currentThread().interrupt();
         }
     }
 
-    private static void showWeatherForMultipleCities(Scanner scanner, String apiKey) {
-        List<String> chosenCities = new ArrayList<>();
+    private static void showWeatherForMultipleCities(Scanner scanner, String apiKey, WeatherService weatherService) {
+        java.util.ArrayList<String> chosenCities = new java.util.ArrayList<>();
         System.out.println("Choose 2 to 3 cities to compare.");
         System.out.print("Enter city numbers separated by commas (example: 1,2,3): ");
         String line = scanner.nextLine().trim();
@@ -130,42 +124,8 @@ public class Main {
 
         System.out.println("Weather summary for selected cities:");
         for (String city : chosenCities) {
-            showWeatherForCity(city, apiKey);
+            showWeatherForCity(city, apiKey, weatherService);
         }
-    }
-
-    private static WeatherSummary fetchWeather(String city, String apiKey) throws IOException, InterruptedException {
-        String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-        String requestUrl = API_URL + "?q=" + encodedCity + "&units=metric&appid=" + apiKey;
-
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(requestUrl))
-                .GET()
-                .build();
-
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            JSONObject errorJson = new JSONObject(response.body());
-            String message = errorJson.optString("message", "Unknown API error.");
-            throw new IOException("OpenWeatherMap request failed: " + message);
-        }
-
-        JSONObject root = new JSONObject(response.body());
-        if (root.has("cod") && root.get("cod") instanceof Integer && root.getInt("cod") != 200) {
-            throw new IOException(root.optString("message", "Invalid response from the API."));
-        }
-
-        JSONObject main = root.getJSONObject("main");
-        JSONArray weatherArray = root.getJSONArray("weather");
-        JSONObject weather = weatherArray.getJSONObject(0);
-
-        return new WeatherSummary(
-                root.optString("name", city),
-                main.getDouble("temp"),
-                weather.optString("description", "No description available"),
-                main.getInt("humidity")
-        );
     }
 
     private static String capitalize(String text) {
@@ -173,7 +133,7 @@ public class Main {
             return "N/A";
         }
 
-        String[] words = text.toLowerCase(Locale.ROOT).split("\\s+");
+        String[] words = text.toLowerCase(java.util.Locale.ROOT).split("\\s+");
         StringBuilder builder = new StringBuilder();
         for (String word : words) {
             if (!word.isEmpty()) {
@@ -183,8 +143,5 @@ public class Main {
             }
         }
         return builder.toString().trim();
-    }
-
-    private record WeatherSummary(String city, double temperatureCelsius, String description, int humidity) {
     }
 }
